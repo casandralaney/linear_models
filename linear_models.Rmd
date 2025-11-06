@@ -1,0 +1,149 @@
+---
+title: "linear_models"
+author: "Casandra Laney"
+date: "2025-11-06"
+output: github_document
+---
+
+```{r}
+library(tidyverse)
+library(p8105.datasets)
+
+set.seed(1)
+```
+
+Clean/Tidy Data
+```{r}
+data("nyc_airbnb")
+
+nyc_airbnb = 
+  nyc_airbnb |> 
+  mutate(stars = review_scores_location / 2) |> 
+  rename(
+    borough = neighbourhood_group,
+    neighborhood = neighbourhood) |> 
+  filter(borough != "Staten Island") |> 
+  select(price, stars, borough, neighborhood, room_type)
+```
+
+Do regression
+```{r}
+fit = lm(price ~ stars + borough, data = nyc_airbnb)
+```
+
+Do some additional cleaning then refit
+```{r}
+nyc_airbnb = 
+  nyc_airbnb |> 
+  mutate(
+    borough = fct_infreq(borough),
+    room_type = fct_infreq(room_type))
+
+fit = lm(price ~ stars + borough, data = nyc_airbnb)
+```
+
+Look at 'lm' stuff (all of this super messy, dont recommend)
+
+```{r, eval = FALSE}
+summary(fit)
+names(summary(fit))
+summary(fit)[["coefficients"]]
+summary(fit)[["df"]]
+
+fitted.values((fit))
+```
+
+Look at cleaner 'lm' stuff
+
+```{r}
+fit |>
+  broom::tidy() |>
+  mutate(
+    term = str_replace(term, "borough", "Bourough:")
+  ) |>
+  select(term, estimate, p.value) |>
+  knitr::kable(digits = 3)
+  
+
+fit |>
+  broom::glance()
+```
+
+## Diagnostics
+
+Look at residuals.
+
+```{r}
+nyc_airbnb |>
+  modelr::add_residuals(fit) |>
+  modelr::add_predictions(fit) |>
+  filter(resid < 1000) |>
+  ggplot(aes(x = borough, y = resid)) +
+  geom_violin()
+```
+
+```{r}
+nyc_airbnb |> 
+  modelr::add_residuals(fit) |> 
+  ggplot(aes(x = stars, y = resid)) + geom_point()
+```
+
+Hypothesis testing
+
+```{r}
+fit_null = lm(price ~ stars + borough, data = nyc_airbnb)
+fit_alt = lm(price ~ stars + borough + room_type, data = nyc_airbnb)
+
+anova(fit_null, fit_alt) |> 
+  broom::tidy()
+```
+
+## Interactions vs Nested Data
+
+```{r}
+nyc_airbnb |> 
+  lm(price ~ stars * borough + room_type * borough, data = _) |> 
+  broom::tidy() |> 
+  knitr::kable(digits = 3)
+```
+
+```{r}
+nest_lm_res =
+  nyc_airbnb |> 
+  nest(data = -borough) |> 
+  mutate(
+    models = map(data, \(df) lm(price ~ stars + room_type, data = df)),
+    results = map(models, broom::tidy)) |> 
+  select(-data, -models) |> 
+  unnest(results)
+
+```
+
+
+The results of this approach are given in the table below.
+
+```{r}
+
+nest_lm_res |> 
+  select(borough, term, estimate) |> 
+  mutate(term = fct_inorder(term)) |> 
+  pivot_wider(
+    names_from = term, values_from = estimate) |> 
+  knitr::kable(digits = 3)
+```
+
+```{r}
+manhattan_airbnb =
+  nyc_airbnb |> 
+  filter(borough == "Manhattan")
+
+manhattan_nest_lm_res =
+  manhattan_airbnb |> 
+  nest(data = -neighborhood) |> 
+  mutate(
+    models = map(data, \(df) lm(price ~ stars + room_type, data = df)),
+    results = map(models, broom::tidy)) |> 
+  select(-data, -models) |> 
+  unnest(results)
+```
+
