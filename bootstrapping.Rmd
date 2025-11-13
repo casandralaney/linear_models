@@ -195,3 +195,55 @@ sim_df_nonconst |>
   unnest(results)
 ```
 
+## Airbnb
+
+```{r}
+data("nyc_airbnb")
+
+nyc_airbnb = nyc_airbnb |>
+  mutate(stars = review_scores_location / 2) |>
+  rename(
+    borough = neighbourhood_group
+  ) |>
+  filter(
+    borough != "Staten Island")  |>
+  drop_na(price, stars, room_type) |>
+  select(price, stars, room_type, borough)
+```
+
+Remind me what this looks like
+
+```{r}
+nyc_airbnb |>
+  ggplot(aes(x = stars, y = price, color = room_type)) +
+  geom_point(alpha = .5)
+```
+
+Try to do the bootstrap
+
+```{r}
+airbnb_bootstrap_results = 
+  nyc_airbnb |>
+  filter(borough == "Manhattan") |>
+  bootstrap(n = 1000) |>
+  mutate(
+    df = map(strap, as_tibble),
+    fits = map(df, \(df) lm(price ~ stars + room_type, data = df)),
+    results = map(fits, broom::tidy)
+  ) |>
+  select(.id, results) |>
+  unnest(results)
+```
+
+Look at the distribution of slope with stars
+
+```{r}
+airbnb_bootstrap_results |>
+  filter(term == "stars") |>
+  ggplot(aes(x = estimate)) +
+  geom_density()
+```
+
+
+
+
